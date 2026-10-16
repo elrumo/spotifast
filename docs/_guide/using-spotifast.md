@@ -555,6 +555,14 @@ The browser's **Open in app** action uses the registered `spotify:` handler.
 Pasting an HTTPS address into the browser opens Spotify's website; Spotifast
 does not take over HTTP or HTTPS associations.
 
+## Album covers and artist photos
+
+Click the cover at the top of an album, or the photo at the top of an
+artist's page, to see it large over the dimmed page: as large as the window
+allows, up to the 640-pixel copy Spotify serves. Click it, choose **Close**,
+or press **Escape** to go back. With the keyboard, Tab reaches the cover and
+Enter opens it.
+
 ## Playlist covers
 
 **In development, not included in 0.8.0:** open a playlist you own and choose

@@ -2098,6 +2098,12 @@ msgstr[0] "{count} подписчик"
 msgstr[1] "{count} подписчика"
 msgstr[2] "{count} подписчиков"
 
+#. Translators: {name} is an artist's name; screen readers say this.
+#: src/ui/artist.rs:355
+#, rust-format
+msgid "Photo of {name}"
+msgstr "Фото: {name}"
+
 #: src/ui/artist.rs:379 src/ui/collection.rs:246 src/ui/show.rs:206
 #: src/ui/show.rs:358
 msgid "Starting…"
@@ -2167,6 +2173,12 @@ msgstr "Открытый плейлист"
 #: src/ui/collection.rs:1989
 msgid "Save to Your Library"
 msgstr "Сохранить в медиатеке"
+
+#. Translators: {name} is an album's name; screen readers say this.
+#: src/ui/collection.rs:2065
+#, rust-format
+msgid "Cover of {name}"
+msgstr "Обложка: {name}"
 
 #. Translators: {count} is the number of people who saved a playlist.
 #: src/ui/collection.rs:2234

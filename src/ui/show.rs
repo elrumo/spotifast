@@ -186,6 +186,7 @@ fn show_hero(app: &mut App, ui: &mut egui::Ui, show: &Show, preview: Option<&Sho
             byline,
             avatar: None,
             round: false,
+            artwork: None,
         },
     );
 }

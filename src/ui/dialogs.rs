@@ -4,13 +4,17 @@ use egui::{Align, CornerRadius, Frame, Layout, Margin, Stroke};
 
 use crate::app::App;
 use crate::i18n::{Locale, gettext, ngettext};
-use crate::model::{Action, Dialog};
+use crate::model::{Action, Artwork, Dialog};
 use crate::theme;
 
 pub fn show(app: &mut App, ctx: &egui::Context) {
     let Some(dialog) = app.dialog.clone() else {
         return;
     };
+    if let Dialog::Artwork(picture) = &dialog {
+        artwork(app, ctx, picture);
+        return;
+    }
     let palette = app.palette;
     let locale = app.locale;
     let frame = Frame::new()
@@ -55,6 +59,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         }
                     });
                 }
+                // Drawn without the dialog's card, above.
+                Dialog::Artwork(_) => {}
                 Dialog::CreatePlaylist { .. } => create_playlist(app, ui),
                 Dialog::EditPlaylist { .. } => edit_playlist(app, ui),
                 Dialog::ConfirmDeletePlaylist { id, name, owned } => {
@@ -230,6 +236,84 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     if response.should_close() {
         app.actions.push(Action::CloseDialog);
     }
+}
+
+/// The space kept clear around the large artwork, and below it for the
+/// Close link.
+const ARTWORK_MARGIN: f32 = 48.0;
+const ARTWORK_CLOSE_ROOM: f32 = 40.0;
+/// The longest side the large artwork is drawn at: Spotify serves covers
+/// and photos 640 pixels across, so anything larger only blurs them.
+const ARTWORK_LONGEST: f32 = 640.0;
+
+/// An album's cover or an artist's photo, as large as the window allows up
+/// to the size Spotify serves it at, over the dimmed page. A click on it or
+/// around it, Close, or Escape puts it away.
+fn artwork(app: &mut App, ctx: &egui::Context, picture: &Artwork) {
+    let palette = app.palette;
+    let locale = app.locale;
+    let room = ctx.content_rect().size()
+        - egui::vec2(
+            2.0 * ARTWORK_MARGIN,
+            2.0 * ARTWORK_MARGIN + ARTWORK_CLOSE_ROOM,
+        );
+    let size = artwork_size(room, picture.aspect);
+    let mut close = false;
+    let response = egui::Modal::new(egui::Id::new("artwork"))
+        .frame(Frame::NONE)
+        .backdrop_color(egui::Color32::from_black_alpha(200))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 16.0;
+            ui.vertical_centered(|ui| {
+                let (rect, shown) = ui.allocate_exact_size(size, egui::Sense::click());
+                super::widgets::paint_shadow(ui, &palette, rect, 8.0);
+                super::widgets::paint_cover_with_thumbnail(
+                    ui,
+                    &palette,
+                    super::widgets::CoverSources {
+                        requested: Some(&picture.url),
+                        previous: picture.shown.as_deref(),
+                        ..Default::default()
+                    },
+                    rect,
+                    8.0,
+                    theme::Icon::Music,
+                    Some(app.backend.art()),
+                );
+                shown.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Image, true, picture.label.as_str())
+                });
+                close |= shown.clicked();
+                close |= theme::link(
+                    ui,
+                    gettext(locale, "Close"),
+                    theme::semibold(14.0),
+                    egui::Color32::WHITE,
+                )
+                .clicked();
+            });
+        });
+    app.dialog_rect = Some(response.response.rect);
+    if close || response.should_close() {
+        app.actions.push(Action::CloseDialog);
+    }
+}
+
+/// The size the large artwork is drawn at: its own shape, within `room`,
+/// and no longer than [`ARTWORK_LONGEST`] on its longer side.
+fn artwork_size(room: egui::Vec2, aspect: f32) -> egui::Vec2 {
+    let aspect = if aspect.is_finite() && aspect > 0.0 {
+        aspect
+    } else {
+        1.0
+    };
+    let longest = if aspect >= 1.0 {
+        ARTWORK_LONGEST
+    } else {
+        ARTWORK_LONGEST * aspect
+    };
+    let width = room.x.min(room.y * aspect).min(longest).max(64.0);
+    egui::vec2(width, width / aspect)
 }
 
 // Keep button rows content-sized when the shared modal area last held a taller dialog.
@@ -612,7 +696,7 @@ fn edit_playlist(app: &mut App, ui: &mut egui::Ui) {
 
 #[cfg(test)]
 mod tests {
-    use super::duplicate_message;
+    use super::{artwork_size, duplicate_message};
     use crate::api::models::{PlayableItem, Track};
     use crate::i18n::Locale;
 
@@ -657,5 +741,21 @@ mod tests {
             message,
             "“Honey” is already in “The best music ever”. Add them anyway?"
         );
+    }
+
+    /// The large artwork keeps its shape, fills a small window, and stops
+    /// at the size Spotify serves it at in a large one.
+    #[test]
+    fn large_artwork_fits_the_window_and_never_blows_up() {
+        let square = artwork_size(egui::vec2(2000.0, 1500.0), 1.0);
+        assert_eq!(square, egui::vec2(640.0, 640.0));
+        let short = artwork_size(egui::vec2(900.0, 400.0), 1.0);
+        assert_eq!(short, egui::vec2(400.0, 400.0));
+        let wide = artwork_size(egui::vec2(2000.0, 1500.0), 2.0);
+        assert_eq!(wide, egui::vec2(640.0, 320.0));
+        let tall = artwork_size(egui::vec2(2000.0, 1500.0), 0.5);
+        assert_eq!(tall, egui::vec2(320.0, 640.0));
+        let nonsense = artwork_size(egui::vec2(300.0, 300.0), f32::NAN);
+        assert_eq!(nonsense, egui::vec2(300.0, 300.0));
     }
 }

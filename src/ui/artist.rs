@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::api::models::{Artist, PlayableItem, pick_image};
 use crate::app::App;
 use crate::i18n::{gettext, ngettext, pgettext};
-use crate::model::{Action, DiscographyFilter, Loadable, Page, RowContext};
+use crate::model::{Action, Artwork, DiscographyFilter, Loadable, Page, RowContext};
 use crate::theme::{self, Icon};
 use crate::util;
 
@@ -348,6 +348,12 @@ fn artist_hero(app: &mut App, ui: &mut egui::Ui, artist: &Artist, preview: Optio
         false,
         HeroArt::of(app),
     );
+    let artwork = Artwork::largest(
+        &artist.images,
+        images.image,
+        // Translators: {name} is an artist's name; screen readers say this.
+        gettext(locale, "Photo of {name}").replace("{name}", &artist.name),
+    );
     hero(
         app,
         ui,
@@ -360,6 +366,7 @@ fn artist_hero(app: &mut App, ui: &mut egui::Ui, artist: &Artist, preview: Optio
             byline,
             avatar: None,
             round: true,
+            artwork,
         },
     );
 }
