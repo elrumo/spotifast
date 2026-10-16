@@ -647,12 +647,21 @@ pub fn accent_color(bytes: &[u8]) -> Option<[u8; 3]> {
 /// Blur applied to the full-window lyrics backdrop.
 const LYRICS_BLUR: f32 = 9.0;
 
+/// The longer side the lyrics backdrop is blurred at, in pixels.
+const BACKDROP_SIDE: u32 = 256;
+
 /// Blur applied to a library thumbnail standing in for a cover.
 ///
-/// Softening happens at the same bounded size as the backdrop, so this is
-/// weaker than the backdrop's radius: the thumbnail already carries little
-/// detail, and a heavier blur smears it into flat colour.
-const COVER_BLUR: f32 = 1.5;
+/// This is weaker than the backdrop's radius: the thumbnail already carries
+/// little detail, and a heavier blur smears it into flat colour.
+const COVER_BLUR: f32 = 0.75;
+
+/// The longer side a softened cover is blurred at, in pixels. Its source is
+/// Spotify's 64-pixel thumbnail, so a larger copy holds no more of the
+/// picture, only more of the GPU: up to 64 of them are kept, and at 256
+/// pixels they took 16 MB where at 128 they take 4 MB. Drawn at a header's
+/// size, the two differ by about 1% on average.
+const SOFTENED_SIDE: u32 = 128;
 
 /// Softened covers held at once, for library artwork seen recently.
 const HELD_COVERS: usize = 64;
@@ -705,7 +714,9 @@ impl LyricsBackdrop {
                 let result = match inner.fetch(&url).await {
                     Ok(bytes) => inner
                         .runtime
-                        .spawn_blocking(move || blurred_background(&bytes, LYRICS_BLUR))
+                        .spawn_blocking(move || {
+                            blurred_background(&bytes, BACKDROP_SIDE, LYRICS_BLUR)
+                        })
                         .await
                         .map_err(|error| error.to_string()),
                     Err(error) => Err(error),
@@ -852,7 +863,7 @@ impl SoftenedCovers {
             let result = match inner.fetch(&ready_uri).await {
                 Ok(bytes) => inner
                     .runtime
-                    .spawn_blocking(move || blurred_background(&bytes, COVER_BLUR))
+                    .spawn_blocking(move || blurred_background(&bytes, SOFTENED_SIDE, COVER_BLUR))
                     .await
                     .map_err(|error| error.to_string()),
                 Err(error) => Err(error),
@@ -864,12 +875,13 @@ impl SoftenedCovers {
     }
 }
 
-fn blurred_background(bytes: &[u8], sigma: f32) -> Option<egui::ColorImage> {
-    Some(blurred_image(decode(bytes).ok()?, sigma))
+/// `bytes`' artwork blurred by `sigma` at `side` pixels on its longer side.
+fn blurred_background(bytes: &[u8], side: u32, sigma: f32) -> Option<egui::ColorImage> {
+    Some(blurred_image(decode(bytes).ok()?, side, sigma))
 }
 
-fn blurred_image(image: image::DynamicImage, sigma: f32) -> egui::ColorImage {
-    let image = image.thumbnail(256, 256).blur(sigma).to_rgba8();
+fn blurred_image(image: image::DynamicImage, side: u32, sigma: f32) -> egui::ColorImage {
+    let image = image.thumbnail(side, side).blur(sigma).to_rgba8();
     egui::ColorImage::from_rgba_unmultiplied(
         [image.width() as usize, image.height() as usize],
         image.as_raw(),
@@ -1462,7 +1474,7 @@ mod tests {
         let image = image::RgbImage::from_pixel(8193, 1, image::Rgb([20, 30, 40]));
         let mut bytes = std::io::Cursor::new(Vec::new());
         image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
-        assert!(blurred_background(bytes.get_ref(), LYRICS_BLUR).is_none());
+        assert!(blurred_background(bytes.get_ref(), BACKDROP_SIDE, LYRICS_BLUR).is_none());
     }
 
     fn softened_test_image() -> egui::ColorImage {
@@ -1530,7 +1542,7 @@ mod tests {
                         "softening must not restart the byte loader"
                     );
                     if let Some(texture) = texture {
-                        assert_eq!(texture.size(), [256, 256]);
+                        assert_eq!(texture.size(), [SOFTENED_SIDE as usize; 2]);
                         break;
                     }
                     tokio::time::sleep(Duration::from_millis(1)).await;
@@ -1640,7 +1652,8 @@ mod tests {
         });
         let mut bytes = std::io::Cursor::new(Vec::new());
         image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
-        let background = blurred_background(bytes.get_ref(), LYRICS_BLUR).expect("valid artwork");
+        let background =
+            blurred_background(bytes.get_ref(), BACKDROP_SIDE, LYRICS_BLUR).expect("valid artwork");
         assert_eq!(background.size, [256, 128]);
         let center = background.pixels[64 * 256 + 128];
         assert!(
@@ -1651,7 +1664,30 @@ mod tests {
             background.pixels[0].r() > 240,
             "the cover's colors remain recognizable"
         );
-        assert!(blurred_background(b"broken artwork", LYRICS_BLUR).is_none());
+        assert!(blurred_background(b"broken artwork", BACKDROP_SIDE, LYRICS_BLUR).is_none());
+    }
+
+    /// A softened cover is blurred at 128 pixels whatever its source: the
+    /// 64-pixel thumbnail it is made from holds no more detail than that,
+    /// and up to 64 of them stay on the GPU.
+    #[test]
+    fn softened_covers_stay_small_on_the_gpu() {
+        for side in [64, 640] {
+            let image = image::RgbImage::from_fn(side, side, |x, _| {
+                image::Rgb([if x < side / 2 { 255 } else { 0 }, 0, 0])
+            });
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+            let softened = blurred_background(bytes.get_ref(), SOFTENED_SIDE, COVER_BLUR)
+                .expect("valid artwork");
+            assert_eq!(softened.size, [128, 128], "from {side} px");
+            assert!(softened.pixels[0].r() > 240, "the colours stay");
+            let edge = softened.pixels[64 * 128 + 64];
+            assert!(
+                edge.r() > 20 && edge.r() < 235,
+                "the edge softens: {edge:?}"
+            );
+        }
     }
 
     /// The media controls ask for a file rather than a URL, and have to be
