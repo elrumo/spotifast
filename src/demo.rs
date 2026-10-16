@@ -1019,6 +1019,14 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 });
             }
             "personal-app" => app.dialog = Some(Dialog::PersonalAppIntro),
+            // The top bar's spinner, as while Spotify is slow to answer: a
+            // library refresh that never hears back. The spinner shows only
+            // online; the demo's backend still lets no request out.
+            "busy" => {
+                app.offline = false;
+                app.library.playlists_loading_since =
+                    Some(Instant::now() - std::time::Duration::from_secs(5));
+            }
             "many-devices" => {
                 app.show_devices = true;
                 app.devices.extend((0..40).map(|index| Device {

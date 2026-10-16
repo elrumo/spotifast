@@ -11089,6 +11089,7 @@ impl App {
             !self.window_hidden && !ctx.input(|input| input.viewport().minimized.unwrap_or(false));
         let focused = ctx.input(|input| input.viewport().focused.unwrap_or(true));
         let budget = crate::power::budget(conditions, shown, focused);
+        crate::power::share(ctx, budget);
         if budget != self.budget {
             log::debug!("budget: {budget:?}");
             self.budget = budget;
@@ -11345,7 +11346,7 @@ impl App {
         self.sync_media_controls(ctx);
 
         if !self.toasts.is_empty() {
-            ctx.request_repaint_after(TOAST_FRAME);
+            theme::repaint_after(ctx, TOAST_FRAME);
         }
         self.theme_transition.paint(ctx);
         self.frame_now = None;
