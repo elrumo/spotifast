@@ -80,6 +80,7 @@ pub fn radio(app: &mut App, ui: &mut egui::Ui, seed: &str) {
             byline,
             avatar: None,
             round: false,
+            artwork: None,
         },
     );
 

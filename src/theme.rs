@@ -888,8 +888,10 @@ fn next_beat(due: f64, now: f64, interval: f64) -> f64 {
 pub fn spinner(ui: &mut egui::Ui, size: f32, color: Color32) -> Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     if ui.is_rect_visible(rect) {
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(33));
+        // The whole interval: egui alone brings a 33 ms frame back in 16.
+        if let Some(interval) = crate::power::spinner_interval(crate::power::shared(ui.ctx())) {
+            repaint_after(ui.ctx(), interval);
+        }
         let radius = size / 2.0 - 2.0;
         let start = ui.input(|input| input.time) * std::f64::consts::TAU * 1.2;
         let sweep = 250_f64.to_radians();
@@ -1210,6 +1212,49 @@ mod tests {
         assert_eq!(delays.len(), 1);
         let ms = delays[0].as_secs_f64() * 1_000.0;
         assert!((ms - 33.0).abs() < 0.5, "{ms} ms");
+    }
+
+    /// A spinner turns at 30 frames a second, not the 60 egui gives a raw
+    /// 33 ms request, half that out of focus, and asks for nothing while
+    /// nobody can see the window: each of its frames redraws the window.
+    #[test]
+    fn a_spinner_asks_for_frames_by_the_budget() {
+        use crate::power::Budget;
+        for (budget, wanted) in [
+            (Budget::Normal, Some(33.0)),
+            (Budget::Saver, Some(66.0)),
+            (Budget::Background, None),
+        ] {
+            let ctx = egui::Context::default();
+            let delays = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let seen = std::sync::Arc::clone(&delays);
+            ctx.set_request_repaint_callback(move |info| seen.lock().unwrap().push(info.delay));
+            crate::power::share(&ctx, budget);
+            let draw = |ctx: &egui::Context| {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    spinner(ui, 16.0, Color32::WHITE);
+                });
+                output.textures_delta.clear();
+            };
+            // egui settles its first pass with frames of its own.
+            draw(&ctx);
+            draw(&ctx);
+            delays.lock().unwrap().clear();
+            draw(&ctx);
+            let soonest = delays
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|delay| delay.as_secs_f64() * 1_000.0)
+                .reduce(f64::min);
+            match (wanted, soonest) {
+                (Some(wanted), Some(ms)) => {
+                    assert!((ms - wanted).abs() < 1.0, "{budget:?}: {ms} ms")
+                }
+                (None, None) => {}
+                _ => panic!("{budget:?}: asked for {soonest:?} ms, wanted {wanted:?}"),
+            }
+        }
     }
 
     /// A visualiser nobody can see asks for no frames at all.

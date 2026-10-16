@@ -981,6 +981,45 @@ pub enum Dialog {
     PremiumNeeded,
     /// Introduce personal Spotify apps to eligible listeners once.
     PersonalAppIntro,
+    /// An album's cover or an artist's photo, as large as the window allows.
+    Artwork(Artwork),
+}
+
+/// The picture a page header shows, opened large from that header.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Artwork {
+    /// The largest copy Spotify serves.
+    pub url: String,
+    /// The header's own copy, already loaded, shown until the large one is.
+    pub shown: Option<String>,
+    /// The width over the height. Spotify's covers and photos are square,
+    /// and say so, but a photo may not be.
+    pub aspect: f32,
+    /// What it shows, for screen readers: "Cover of Abbey Road".
+    pub label: String,
+}
+
+impl Artwork {
+    /// The largest of `images`, with `shown` held until it has loaded.
+    /// `None` when Spotify gave no picture at all.
+    pub fn largest(images: &[Image], shown: Option<&str>, label: String) -> Option<Self> {
+        let largest = images
+            .iter()
+            .filter(|image| !image.url.is_empty())
+            .max_by_key(|image| image.width.unwrap_or(0))?;
+        let aspect = match (largest.width, largest.height) {
+            (Some(width), Some(height)) if width > 0 && height > 0 => width as f32 / height as f32,
+            _ => 1.0,
+        };
+        Some(Self {
+            url: largest.url.clone(),
+            shown: shown
+                .filter(|shown| *shown != largest.url)
+                .map(str::to_owned),
+            aspect,
+            label,
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1422,5 +1461,58 @@ mod finite_scroll_tests {
         assert_eq!(list.window_at(150, 50), None);
         list.fail("offline".into());
         assert_eq!(list.window_at(150, 50), None);
+    }
+}
+
+#[cfg(test)]
+mod artwork_tests {
+    use super::*;
+
+    fn image(url: &str, width: Option<u32>, height: Option<u32>) -> Image {
+        Image {
+            url: url.into(),
+            width,
+            height,
+        }
+    }
+
+    /// The large view asks for the widest copy Spotify lists, and holds the
+    /// header's copy only while it is a different one.
+    #[test]
+    fn artwork_opens_the_widest_copy_and_holds_the_header_copy() {
+        let images = [
+            image("small", Some(64), Some(64)),
+            image("large", Some(640), Some(640)),
+            image("medium", Some(300), Some(300)),
+        ];
+        let artwork = Artwork::largest(&images, Some("medium"), "Cover".into()).unwrap();
+        assert_eq!(artwork.url, "large");
+        assert_eq!(artwork.shown.as_deref(), Some("medium"));
+        assert_eq!(artwork.aspect, 1.0);
+        let same = Artwork::largest(&images, Some("large"), "Cover".into()).unwrap();
+        assert_eq!(same.shown, None, "nothing to hold when it is the same copy");
+    }
+
+    /// A photo that is not square keeps its shape; one without sizes is
+    /// taken as square, and a header without a picture opens nothing.
+    #[test]
+    fn artwork_keeps_its_shape_and_needs_a_picture() {
+        let wide = [image("wide", Some(1000), Some(500))];
+        assert_eq!(
+            Artwork::largest(&wide, None, String::new()).unwrap().aspect,
+            2.0
+        );
+        let unknown = [image("unknown", None, None)];
+        assert_eq!(
+            Artwork::largest(&unknown, None, String::new())
+                .unwrap()
+                .aspect,
+            1.0
+        );
+        assert_eq!(Artwork::largest(&[], None, String::new()), None);
+        assert_eq!(
+            Artwork::largest(&[image("", Some(640), Some(640))], None, String::new()),
+            None
+        );
     }
 }

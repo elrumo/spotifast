@@ -9,7 +9,7 @@ use crate::api::models::{Album, Image, PlayableItem, Playlist, pick_image};
 use crate::app::App;
 use crate::i18n::{Locale, gettext, ngettext};
 use crate::model::{
-    Action, Dialog, DragTrack, Loadable, Page, PagedList, RowContext, RowPick, SortColumn,
+    Action, Artwork, Dialog, DragTrack, Loadable, Page, PagedList, RowContext, RowPick, SortColumn,
     TableItem, TableRowsCache, TableSort,
 };
 use crate::theme::{self, Icon, Palette};
@@ -34,6 +34,9 @@ pub(super) struct Hero<'a> {
     /// without an owner, an album or an artist say, draws nothing.
     pub avatar: Option<Avatar>,
     pub round: bool,
+    /// The picture the header's art opens large when clicked: an album's
+    /// cover or an artist's photo. Other headers' art is not a control.
+    pub artwork: Option<Artwork>,
 }
 
 #[derive(Default)]
@@ -103,7 +106,12 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
     };
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 24.0;
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(cover_size), Sense::hover());
+        let sense = if hero.artwork.is_some() {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
+        let (rect, cover) = ui.allocate_exact_size(Vec2::splat(cover_size), sense);
         let radius = if hero.round { cover_size / 2.0 } else { 6.0 };
         widgets::paint_shadow(ui, &palette, rect, radius);
         if hero.liked {
@@ -124,6 +132,17 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
                 if hero.round { Icon::User } else { Icon::Music },
                 Some(app.backend.art()),
             );
+        }
+        if let Some(artwork) = hero.artwork {
+            let cover = cover.on_hover_cursor(egui::CursorIcon::PointingHand);
+            cover.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, artwork.label.as_str())
+            });
+            theme::focus_ring(ui, &cover);
+            if cover.clicked() {
+                app.actions
+                    .push(Action::ShowDialog(Dialog::Artwork(artwork)));
+            }
         }
         ui.vertical(|ui| {
             let width = ui.available_width();
@@ -1923,6 +1942,7 @@ fn playlist_hero<'a>(
             byline,
             avatar,
             round: false,
+            artwork: None,
         },
     );
 }
@@ -2038,6 +2058,12 @@ fn album_hero(
         true,
         HeroArt::of(app),
     );
+    let artwork = Artwork::largest(
+        &album.images,
+        images.image,
+        // Translators: {name} is an album's name; screen readers say this.
+        gettext(app.locale, "Cover of {name}").replace("{name}", &album.name),
+    );
     hero(
         app,
         ui,
@@ -2050,6 +2076,7 @@ fn album_hero(
             byline,
             avatar: None,
             round: false,
+            artwork,
         },
     );
 }
@@ -2137,6 +2164,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
             byline: vec![(user, None), (count_text, None)],
             avatar: None,
             round: false,
+            artwork: None,
         },
     );
     let collection_uri = app

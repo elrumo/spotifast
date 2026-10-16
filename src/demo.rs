@@ -1019,6 +1019,14 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 });
             }
             "personal-app" => app.dialog = Some(Dialog::PersonalAppIntro),
+            // The top bar's spinner, as while Spotify is slow to answer: a
+            // library refresh that never hears back. The spinner shows only
+            // online; the demo's backend still lets no request out.
+            "busy" => {
+                app.offline = false;
+                app.library.playlists_loading_since =
+                    Some(Instant::now() - std::time::Duration::from_secs(5));
+            }
             "many-devices" => {
                 app.show_devices = true;
                 app.devices.extend((0..40).map(|index| Device {
@@ -1029,6 +1037,27 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 }));
             }
             "shortcuts" => app.dialog = Some(Dialog::Shortcuts),
+            // The open album's cover or artist's photo, opened large.
+            "artwork" => {
+                let artwork = match app.page().clone() {
+                    Page::Album(id) => app
+                        .album_pages
+                        .get(&id)
+                        .and_then(|page| page.album.get())
+                        .and_then(|album| {
+                            Artwork::largest(&album.images, None, album.name.clone())
+                        }),
+                    Page::Artist(id) => app
+                        .artist_pages
+                        .get(&id)
+                        .and_then(|page| page.artist.get())
+                        .and_then(|artist| {
+                            Artwork::largest(&artist.images, None, artist.name.clone())
+                        }),
+                    _ => None,
+                };
+                app.dialog = artwork.map(Dialog::Artwork);
+            }
             "premium" => app.dialog = Some(Dialog::PremiumNeeded),
             "edit" => {
                 app.dialog = Some(Dialog::EditPlaylist {
@@ -1439,6 +1468,82 @@ mod tests {
                 app.backend.shutdown();
             }
         }
+    }
+
+    /// Clicking an album's cover, or Enter on an artist's focused photo,
+    /// opens the largest copy Spotify serves, which a click on it or Escape
+    /// puts away. A playlist's cover is not a control.
+    #[test]
+    fn header_art_opens_large_and_closes() {
+        use egui::accesskit::{Action as Request, Role};
+        let (album, artist) = (album(0), artist(0));
+        for (page, label, url, close) in [
+            (
+                Page::Album(album.id.clone()),
+                format!("Cover of {}", album.name),
+                album.images[0].url.clone(),
+                None,
+            ),
+            (
+                Page::Artist(artist.id.clone()),
+                format!("Photo of {}", artist.name),
+                artist.images[0].url.clone(),
+                Some(egui::Key::Escape),
+            ),
+        ] {
+            let (ctx, mut app) = accessible_app("header-artwork");
+            app.open(page);
+            let _ = accessible_frame(&ctx, &mut app, vec![]);
+            let tree = accessible_frame(&ctx, &mut app, vec![]);
+            let cover = accessible_node(&tree, &label, Role::Button);
+            if close.is_some() {
+                // From the keyboard: focus, then Enter.
+                let _ = accessible_frame(
+                    &ctx,
+                    &mut app,
+                    vec![accessible_action(cover, Request::Focus, None)],
+                );
+                let _ = accessible_frame(
+                    &ctx,
+                    &mut app,
+                    vec![keyboard(egui::Key::Enter, egui::Modifiers::NONE)],
+                );
+            } else {
+                let _ = accessible_frame(
+                    &ctx,
+                    &mut app,
+                    vec![accessible_action(cover, Request::Click, None)],
+                );
+            }
+            let Some(Dialog::Artwork(artwork)) = &app.dialog else {
+                panic!("{label}: nothing opened");
+            };
+            assert_eq!(artwork.url, url, "{label}: the largest copy");
+            // A new area measures itself unseen on its first frame.
+            let _ = accessible_frame(&ctx, &mut app, vec![]);
+            let tree = accessible_frame(&ctx, &mut app, vec![]);
+            let picture = accessible_node(&tree, &label, Role::Image);
+            let event = match close {
+                Some(key) => keyboard(key, egui::Modifiers::NONE),
+                None => accessible_action(picture, Request::Click, None),
+            };
+            let _ = accessible_frame(&ctx, &mut app, vec![event]);
+            let _ = accessible_frame(&ctx, &mut app, vec![]);
+            assert!(app.dialog.is_none(), "{label}: still open");
+            app.backend.shutdown();
+        }
+
+        let (ctx, mut app) = accessible_app("header-artwork-playlist");
+        app.open(Page::Playlist("pl1".into()));
+        let _ = accessible_frame(&ctx, &mut app, vec![]);
+        let tree = accessible_frame(&ctx, &mut app, vec![]);
+        assert!(
+            !tree.nodes.iter().any(|(_, node)| node
+                .label()
+                .is_some_and(|label| label.starts_with("Cover of"))),
+            "a playlist's cover opens nothing"
+        );
+        app.backend.shutdown();
     }
 
     #[test]

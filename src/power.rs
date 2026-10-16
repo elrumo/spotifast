@@ -9,6 +9,8 @@
 
 pub use fastframe_power::{Ack, Activity, Conditions, Event, Power};
 
+use std::time::Duration;
+
 use crate::player::{LocalState, Playback};
 
 /// How much the app may spend on drawing and polling.
@@ -68,6 +70,37 @@ pub fn visualiser_fps(budget: Budget, conditions: Conditions, fps: u32) -> Optio
     }
 }
 
+/// The pause between a spinner's frames within `budget`: 30 frames a
+/// second as designed, half that out of focus or while saving energy, as
+/// for the visualizers, and none while nobody can see the window. Every
+/// frame redraws the whole window, so a spinner the top bar keeps up while
+/// Spotify is slow to answer costs as much as any animation.
+pub fn spinner_interval(budget: Budget) -> Option<Duration> {
+    match budget {
+        Budget::Normal => Some(SPINNER_FRAME),
+        Budget::Saver => Some(SPINNER_FRAME * 2),
+        Budget::Background => None,
+    }
+}
+
+/// A spinner's frame at its designed 30 frames a second.
+const SPINNER_FRAME: Duration = Duration::from_millis(33);
+
+fn budget_id() -> egui::Id {
+    egui::Id::new("spotifast-power-budget")
+}
+
+/// Keeps `budget` on `ctx`, for widgets that pace themselves by it.
+pub fn share(ctx: &egui::Context, budget: Budget) {
+    ctx.data_mut(|data| data.insert_temp(budget_id(), budget));
+}
+
+/// The budget last kept on `ctx`, as designed when none was.
+pub fn shared(ctx: &egui::Context) -> Budget {
+    ctx.data(|data| data.get_temp(budget_id()))
+        .unwrap_or_default()
+}
+
 /// Whether local playback is doing work the user is waiting for, which
 /// macOS must not slow down with App Nap while another app is in front:
 /// playing or loading on a connected engine. Pause, stop, an output error
@@ -109,6 +142,31 @@ mod tests {
         assert_eq!(visualiser_fps(Budget::Saver, saving, 30), Some(15));
         assert_eq!(visualiser_fps(Budget::Background, normal, 60), None);
         assert_eq!(visualiser_fps(Budget::Background, normal, 0), None);
+    }
+
+    /// Spinners turn at 30 frames a second in focus, half that out of
+    /// focus or saving energy, and ask for no frames while unseen.
+    #[test]
+    fn spinners_slow_down_out_of_focus_and_stop_unseen() {
+        assert_eq!(
+            spinner_interval(Budget::Normal),
+            Some(Duration::from_millis(33))
+        );
+        assert_eq!(
+            spinner_interval(Budget::Saver),
+            Some(Duration::from_millis(66))
+        );
+        assert_eq!(spinner_interval(Budget::Background), None);
+    }
+
+    /// The budget kept on a context is the one widgets read back; a
+    /// context nothing was kept on reads as designed.
+    #[test]
+    fn the_shared_budget_reads_back() {
+        let ctx = egui::Context::default();
+        assert_eq!(shared(&ctx), Budget::Normal);
+        share(&ctx, Budget::Saver);
+        assert_eq!(shared(&ctx), Budget::Saver);
     }
 
     #[test]

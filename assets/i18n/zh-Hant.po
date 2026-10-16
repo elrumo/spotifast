@@ -2012,6 +2012,12 @@ msgid "{count} follower"
 msgid_plural "{count} followers"
 msgstr[0] "{count} 位追蹤者"
 
+#. Translators: {name} is an artist's name; screen readers say this.
+#: src/ui/artist.rs:355
+#, rust-format
+msgid "Photo of {name}"
+msgstr "{name} 的照片"
+
 #: src/ui/artist.rs:379 src/ui/collection.rs:246 src/ui/show.rs:206
 #: src/ui/show.rs:358
 msgid "Starting…"
@@ -2081,6 +2087,12 @@ msgstr "公開播放清單"
 #: src/ui/collection.rs:1989
 msgid "Save to Your Library"
 msgstr "儲存至你的音樂庫"
+
+#. Translators: {name} is an album's name; screen readers say this.
+#: src/ui/collection.rs:2065
+#, rust-format
+msgid "Cover of {name}"
+msgstr "{name} 的封面"
 
 #. Translators: {count} is the number of people who saved a playlist.
 #: src/ui/collection.rs:2234

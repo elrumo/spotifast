@@ -2095,6 +2095,12 @@ msgid_plural "{count} followers"
 msgstr[0] "{count} seguidor"
 msgstr[1] "{count} seguidores"
 
+#. Translators: {name} is an artist's name; screen readers say this.
+#: src/ui/artist.rs:355
+#, rust-format
+msgid "Photo of {name}"
+msgstr "Fotografia de {name}"
+
 #: src/ui/artist.rs:379 src/ui/collection.rs:246 src/ui/show.rs:206
 #: src/ui/show.rs:358
 msgid "Starting…"
@@ -2164,6 +2170,12 @@ msgstr "Playlist pública"
 #: src/ui/collection.rs:1989
 msgid "Save to Your Library"
 msgstr "Guardar na tua biblioteca"
+
+#. Translators: {name} is an album's name; screen readers say this.
+#: src/ui/collection.rs:2065
+#, rust-format
+msgid "Cover of {name}"
+msgstr "Capa de {name}"
 
 #. Translators: {count} is the number of people who saved a playlist.
 #: src/ui/collection.rs:2234

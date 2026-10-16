@@ -394,7 +394,11 @@ Spotifast follows the system when it asks for less motion: **Animation
 effects** turned off in Windows, **Reduce motion** on macOS, or GNOME's
 **Animations** turned off. Its animations then show where they end at once:
 the player bar's colour changes without fading, lyrics jump to the sung line,
-and a new theme replaces the old one without the reveal. Spinners still turn.
+and a new theme replaces the old one without the reveal. Spinners still turn,
+at 30 frames a second, at half that while the window is out of focus or the
+system saves energy, and not at all while nobody can see the window. Each
+frame redraws the window, and the top bar's spinner can stay up for a while
+when Spotify is slow to answer.
 
 In **Settings > Appearance**, **Compact track list** puts each song on one
 line. In narrow lists, the added date follows the artist credits with a spaced
@@ -550,6 +554,14 @@ tracks cannot start playback.
 The browser's **Open in app** action uses the registered `spotify:` handler.
 Pasting an HTTPS address into the browser opens Spotify's website; Spotifast
 does not take over HTTP or HTTPS associations.
+
+## Album covers and artist photos
+
+Click the cover at the top of an album, or the photo at the top of an
+artist's page, to see it large over the dimmed page: as large as the window
+allows, up to the 640-pixel copy Spotify serves. Click it, choose **Close**,
+or press **Escape** to go back. With the keyboard, Tab reaches the cover and
+Enter opens it.
 
 ## Playlist covers
 
